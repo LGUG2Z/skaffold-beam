@@ -20,63 +20,110 @@ import (
 )
 
 const (
-	appName    = "skaffold-beam"
-	appVersion = "0.1"
+	appName      = "skaffold-beam"
+	appVersion   = "0.1"
+	appUsage     = "A dynamic and blast radius-aware skaffold manifest generator for meta-repo projects"
+	appUsageText = "skaffold-beam [global options]"
 )
 
+type skaffoldWithRemoteManifestsOpts struct {
+	gcpProject  string
+	story       *meta.Manifest
+	storyConfig *v1alpha2.SkaffoldConfig
+}
+
+type skaffoldWithLocalManifestsOpts struct {
+	gcpProject   string
+	inputPath    string
+	masterConfig *v1alpha2.SkaffoldConfig
+	outputPath   string
+	story        *meta.Manifest
+	storyConfig  *v1alpha2.SkaffoldConfig
+}
+
 func main() {
-	var (
-		fs afero.Fs
-		m  meta.Manifest
-	)
+	var fs afero.Fs
+	var story *meta.Manifest
 
-	sb := cli.NewApp()
-	sb.Name = appName
-	sb.Version = appVersion
-	sb.Authors = []cli.Author{{Name: "J. Iqbal", Email: "jade@beamery.com"}}
-	sb.Flags = []cli.Flag{
-		cli.StringFlag{Name: "gcp-project, p"},
-		cli.StringFlag{Name: "input-path, i"},
-		cli.StringFlag{Name: "output-path, o", Value: "manifests"},
+	app := cli.NewApp()
+
+	app.Name = appName
+	app.Usage = appUsage
+	app.UsageText = appUsageText
+	app.Version = appVersion
+
+	app.Authors = []cli.Author{{Name: "J. Iqbal", Email: "jade@beamery.com"}}
+
+	app.Flags = []cli.Flag{
+		cli.StringFlag{Name: "gcp-project, p", Usage: "Google Cloud Platform project within which to build and store images", },
+		cli.StringFlag{Name: "input-path, i", Usage: "Relative path to manifest templates directory"},
+		cli.StringFlag{Name: "output-path, o", Value: "manifests", Usage: "Relative path manifest output directory"},
+		cli.BoolFlag{Name: "remote-manifests, r", Usage: "Update deployed remote manifests on the target cluster with fresh images"},
 	}
 
-	sb.Before = func(c *cli.Context) error {
+	app.Action = cli.ActionFunc(func(c *cli.Context) error {
 		fs = afero.NewOsFs()
-		m = meta.Manifest{Fs: fs}
-		return m.Load(".meta")
-	}
+		story = &meta.Manifest{Fs: fs}
 
-	sb.Action = cli.ActionFunc(func(c *cli.Context) error {
-		outputPath := c.String("output-path")
-		inputPath := c.String("input-path")
-		gcpProject := c.String("gcp-project")
-
-		infraConfig := v1alpha2.SkaffoldConfig{
-			APIVersion: v1alpha2.Version,
-			Kind:       "Config",
-			Deploy: v1alpha2.DeployConfig{
-				DeployType: v1alpha2.DeployType{KubectlDeploy: &v1alpha2.KubectlDeploy{
-					Manifests: []string{fmt.Sprintf("%s/infra/*.yaml", outputPath)},
-				}},
-			},
-		}
-
-		masterConfig := baseSkaffoldConfig()
-		storyConfig := baseSkaffoldConfig()
-
-		if err := enrichSkaffoldConfigs(masterConfig, storyConfig, &m, gcpProject, inputPath, outputPath); err != nil {
+		if err := story.Load(".meta"); err != nil {
 			return err
 		}
 
+		outputPath := c.String("output-path")
+		inputPath := c.String("input-path")
+		gcpProject := c.String("gcp-project")
+		remoteManifests := c.Bool("remote-manifests")
+
+		storyConfig := baseSkaffoldConfig()
 		configMap := make(map[string]*v1alpha2.SkaffoldConfig)
-		configMap["skaffold-infra.yaml"] = &infraConfig
-		configMap["skaffold-master.yaml"] = masterConfig
-		configMap["skaffold-story.yaml"] = storyConfig
+
+		if remoteManifests {
+			opts := &skaffoldWithRemoteManifestsOpts{
+				gcpProject:  gcpProject,
+				storyConfig: storyConfig,
+				story:       story,
+			}
+
+			if err := skaffoldWithRemoteManifests(opts); err != nil {
+				return err
+			}
+
+			configMap["skaffold.yaml"] = storyConfig
+		} else {
+			infraConfig := v1alpha2.SkaffoldConfig{
+				APIVersion: v1alpha2.Version,
+				Kind:       "Config",
+				Deploy: v1alpha2.DeployConfig{
+					DeployType: v1alpha2.DeployType{KubectlDeploy: &v1alpha2.KubectlDeploy{
+						Manifests: []string{fmt.Sprintf("%s/infra/*.yaml", outputPath)},
+					}},
+				},
+			}
+
+			masterConfig := baseSkaffoldConfig()
+
+			opts := &skaffoldWithLocalManifestsOpts{
+				story:        story,
+				storyConfig:  storyConfig,
+				gcpProject:   gcpProject,
+				masterConfig: masterConfig,
+				inputPath:    inputPath,
+				outputPath:   outputPath,
+			}
+
+			if err := skaffoldWithLocalManifests(opts); err != nil {
+				return err
+			}
+
+			configMap["skaffold-story.yaml"] = storyConfig
+			configMap["skaffold-infra.yaml"] = &infraConfig
+			configMap["skaffold-master.yaml"] = masterConfig
+		}
 
 		return writeConfigs(fs, configMap)
 	})
 
-	if err := sb.Run(os.Args); err != nil {
+	if err := app.Run(os.Args); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -98,53 +145,82 @@ func calculateStoryTag(story *meta.Manifest) (string, error) {
 	return fmt.Sprintf("{{.IMAGE_NAME}}:%s-%s", story.Name, strings.Join(hashes, "-")), nil
 }
 
-func enrichSkaffoldConfigs(masterConfig, storyConfig *v1alpha2.SkaffoldConfig, story *meta.Manifest, gcpProject, inputPath, outputPath string) error {
-	storyTag, err := calculateStoryTag(story)
+func skaffoldWithRemoteManifests(opts *skaffoldWithRemoteManifestsOpts) error {
+	storyTag, err := calculateStoryTag(opts.story)
 	if err != nil {
 		return err
 	}
 
-	storyConfig.Build = v1alpha2.BuildConfig{}
-	storyConfig.Build.TagPolicy.EnvTemplateTagger = &v1alpha2.EnvTemplateTagger{Template: storyTag}
+	opts.storyConfig.Build = v1alpha2.BuildConfig{}
+	opts.storyConfig.Build.TagPolicy.EnvTemplateTagger = &v1alpha2.EnvTemplateTagger{Template: storyTag}
 
-	for project := range story.Deployables {
-		masterConfig.Deploy.KubectlDeploy.Manifests =
-			append(
-				masterConfig.Deploy.KubectlDeploy.Manifests,
-				fmt.Sprintf("%s/%s/*.yaml", outputPath, project),
-			)
-
-		if story.Deployables[project] {
-			storyConfig.Build.Artifacts = append(storyConfig.Build.Artifacts, &v1alpha2.Artifact{
-				ImageName:    fmt.Sprintf("gcr.io/%s/%s", gcpProject, project),
+	for project := range opts.story.Deployables {
+		if opts.story.Deployables[project] {
+			opts.storyConfig.Build.Artifacts = append(opts.storyConfig.Build.Artifacts, &v1alpha2.Artifact{
+				ImageName:    fmt.Sprintf("gcr.io/%s/%s", opts.gcpProject, project),
 				Workspace:    project,
 				ArtifactType: v1alpha2.ArtifactType{DockerArtifact: &v1alpha2.DockerArtifact{DockerfilePath: "Dockerfile"}},
 			})
 
-
-			storyConfig.Deploy.KubectlDeploy.Manifests =
+			opts.storyConfig.Deploy.KubectlDeploy.RemoteManifests =
 				append(
-					storyConfig.Deploy.KubectlDeploy.Manifests,
-					fmt.Sprintf("%s/%s/*.yaml", outputPath, project),
+					opts.storyConfig.Deploy.KubectlDeploy.RemoteManifests,
+					fmt.Sprintf("%s:deployment/%s", opts.story.Name, project),
+				)
+		}
+	}
+
+	sort.Strings(opts.storyConfig.Deploy.KubectlDeploy.Manifests)
+
+	return nil
+}
+
+func skaffoldWithLocalManifests(opts *skaffoldWithLocalManifestsOpts) error {
+	storyTag, err := calculateStoryTag(opts.story)
+	if err != nil {
+		return err
+	}
+
+	opts.storyConfig.Build = v1alpha2.BuildConfig{}
+	opts.storyConfig.Build.TagPolicy.EnvTemplateTagger = &v1alpha2.EnvTemplateTagger{Template: storyTag}
+
+	for project := range opts.story.Deployables {
+		opts.masterConfig.Deploy.KubectlDeploy.Manifests =
+			append(
+				opts.masterConfig.Deploy.KubectlDeploy.Manifests,
+				fmt.Sprintf("%s/%s/*.yaml", opts.outputPath, project),
+			)
+
+		if opts.story.Deployables[project] {
+			opts.storyConfig.Build.Artifacts = append(opts.storyConfig.Build.Artifacts, &v1alpha2.Artifact{
+				ImageName:    fmt.Sprintf("gcr.io/%s/%s", opts.gcpProject, project),
+				Workspace:    project,
+				ArtifactType: v1alpha2.ArtifactType{DockerArtifact: &v1alpha2.DockerArtifact{DockerfilePath: "Dockerfile"}},
+			})
+
+			opts.storyConfig.Deploy.KubectlDeploy.Manifests =
+				append(
+					opts.storyConfig.Deploy.KubectlDeploy.Manifests,
+					fmt.Sprintf("%s/%s/*.yaml", opts.outputPath, project),
 				)
 		}
 
-		projectManifests, err := afero.ReadDir(story.Fs, fmt.Sprintf("%s/%s", inputPath, project))
+		projectManifests, err := afero.ReadDir(opts.story.Fs, fmt.Sprintf("%s/%s", opts.inputPath, project))
 		if err != nil {
 			fmt.Printf("manifests not found for %s, continuing\n", project)
 		}
 
-		if err := story.Fs.MkdirAll(fmt.Sprintf("%s/%s", outputPath, project), os.FileMode(0700)); err != nil {
+		if err := opts.story.Fs.MkdirAll(fmt.Sprintf("%s/%s", opts.outputPath, project), os.FileMode(0700)); err != nil {
 			return err
 		}
 
-		if err := updateManifestsForSkaffold(story, projectManifests, inputPath, outputPath, project); err != nil {
+		if err := updateManifestsForSkaffold(opts.story, projectManifests, opts.inputPath, opts.outputPath, project); err != nil {
 			return err
 		}
 	}
 
-	sort.Strings(storyConfig.Deploy.KubectlDeploy.Manifests)
-	sort.Strings(masterConfig.Deploy.KubectlDeploy.Manifests)
+	sort.Strings(opts.storyConfig.Deploy.KubectlDeploy.Manifests)
+	sort.Strings(opts.masterConfig.Deploy.KubectlDeploy.Manifests)
 
 	return nil
 }
@@ -184,7 +260,7 @@ func baseSkaffoldConfig() *v1alpha2.SkaffoldConfig {
 		APIVersion: v1alpha2.Version,
 		Kind:       "Config",
 		Deploy: v1alpha2.DeployConfig{
-			DeployType: v1alpha2.DeployType{KubectlDeploy: &v1alpha2.KubectlDeploy{RemoteManifests: []string{}}},
+			DeployType: v1alpha2.DeployType{KubectlDeploy: &v1alpha2.KubectlDeploy{}},
 		},
 	}
 }
