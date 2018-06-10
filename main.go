@@ -56,9 +56,10 @@ func main() {
 
 	app.Flags = []cli.Flag{
 		cli.StringFlag{Name: "gcp-project, p", Usage: "Google Cloud Platform project within which to build and store images", },
-		cli.StringFlag{Name: "input-path, i", Usage: "Relative path to manifest templates directory"},
-		cli.StringFlag{Name: "output-path, o", Value: "manifests", Usage: "Relative path manifest output directory"},
+		cli.StringFlag{Name: "input-dir, i", Usage: "Relative path to manifest templates directory"},
+		cli.StringFlag{Name: "output-dir, o", Value: "manifests", Usage: "Relative path manifest output directory"},
 		cli.BoolFlag{Name: "remote-manifests, r", Usage: "Update deployed remote manifests on the target cluster with fresh images"},
+		cli.StringFlag{Name: "infra", Usage: "Create a separate infrastructure manifest from template(s) in the given sub-directory of --input-path"},
 	}
 
 	app.Action = cli.ActionFunc(func(c *cli.Context) error {
@@ -69,15 +70,23 @@ func main() {
 			return err
 		}
 
-		outputPath := c.String("output-path")
-		inputPath := c.String("input-path")
+		outputDir := c.String("output-dir")
+		inputDir := c.String("input-dir")
 		gcpProject := c.String("gcp-project")
 		remoteManifests := c.Bool("remote-manifests")
+		infra := c.String("infra")
+
+		if gcpProject == "" {
+			return fmt.Errorf("a Google Cloud Platform project id is required")
+
+		}
 
 		storyConfig := baseSkaffoldConfig()
-		configMap := make(map[string]*v1alpha2.SkaffoldConfig)
+		manifestMap := make(map[string]*v1alpha2.SkaffoldConfig)
 
 		if remoteManifests {
+			manifestMap["skaffold.yaml"] = storyConfig
+
 			opts := &skaffoldWithRemoteManifestsOpts{
 				gcpProject:  gcpProject,
 				storyConfig: storyConfig,
@@ -88,39 +97,46 @@ func main() {
 				return err
 			}
 
-			configMap["skaffold.yaml"] = storyConfig
 		} else {
-			infraConfig := v1alpha2.SkaffoldConfig{
-				APIVersion: v1alpha2.Version,
-				Kind:       "Config",
-				Deploy: v1alpha2.DeployConfig{
-					DeployType: v1alpha2.DeployType{KubectlDeploy: &v1alpha2.KubectlDeploy{
-						Manifests: []string{fmt.Sprintf("%s/infra/*.yaml", outputPath)},
-					}},
-				},
+			if inputDir == "" {
+				return fmt.Errorf("local manifest template directory is required when not updating remote manifests")
+			}
+
+			manifestMap["skaffold-story.yaml"] = storyConfig
+
+			if infra != "" {
+				infraConfig := v1alpha2.SkaffoldConfig{
+					APIVersion: v1alpha2.Version,
+					Kind:       "Config",
+					Deploy: v1alpha2.DeployConfig{
+						DeployType: v1alpha2.DeployType{KubectlDeploy: &v1alpha2.KubectlDeploy{
+							Manifests: []string{fmt.Sprintf("%s/%s/*.yaml", outputDir, infra)},
+						}},
+					},
+				}
+
+				manifestMap["skaffold-infra.yaml"] = &infraConfig
 			}
 
 			masterConfig := baseSkaffoldConfig()
+			manifestMap["skaffold-master.yaml"] = masterConfig
 
 			opts := &skaffoldWithLocalManifestsOpts{
 				story:        story,
 				storyConfig:  storyConfig,
 				gcpProject:   gcpProject,
 				masterConfig: masterConfig,
-				inputPath:    inputPath,
-				outputPath:   outputPath,
+				inputPath:    inputDir,
+				outputPath:   outputDir,
 			}
 
 			if err := skaffoldWithLocalManifests(opts); err != nil {
 				return err
 			}
 
-			configMap["skaffold-story.yaml"] = storyConfig
-			configMap["skaffold-infra.yaml"] = &infraConfig
-			configMap["skaffold-master.yaml"] = masterConfig
 		}
 
-		return writeConfigs(fs, configMap)
+		return writeConfigs(fs, manifestMap)
 	})
 
 	if err := app.Run(os.Args); err != nil {
