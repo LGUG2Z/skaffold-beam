@@ -55,7 +55,7 @@ func main() {
 	app.Authors = []cli.Author{{Name: "J. Iqbal", Email: "jade@beamery.com"}}
 
 	app.Flags = []cli.Flag{
-		cli.StringFlag{Name: "gcp-project, p", Usage: "Google Cloud Platform project within which to build and store images", },
+		cli.StringFlag{Name: "gcp-project, p", Usage: "Google Cloud Platform project within which to build and store images"},
 		cli.StringFlag{Name: "input-dir, i", Usage: "Relative path to manifest templates directory"},
 		cli.StringFlag{Name: "output-dir, o", Value: "manifests", Usage: "Relative path manifest output directory"},
 		cli.BoolFlag{Name: "remote-manifests, r", Usage: "Update deployed remote manifests on the target cluster with fresh images"},
@@ -167,7 +167,10 @@ func skaffoldWithRemoteManifests(opts *skaffoldWithRemoteManifestsOpts) error {
 		return err
 	}
 
-	opts.storyConfig.Build = v1alpha2.BuildConfig{}
+	opts.storyConfig.Build = v1alpha2.BuildConfig{BuildType: v1alpha2.BuildType{
+		GoogleCloudBuild: &v1alpha2.GoogleCloudBuild{ProjectID: opts.gcpProject}},
+	}
+
 	opts.storyConfig.Build.TagPolicy.EnvTemplateTagger = &v1alpha2.EnvTemplateTagger{Template: storyTag}
 
 	for project := range opts.story.Deployables {
@@ -197,7 +200,10 @@ func skaffoldWithLocalManifests(opts *skaffoldWithLocalManifestsOpts) error {
 		return err
 	}
 
-	opts.storyConfig.Build = v1alpha2.BuildConfig{}
+	opts.storyConfig.Build = v1alpha2.BuildConfig{BuildType: v1alpha2.BuildType{
+		GoogleCloudBuild: &v1alpha2.GoogleCloudBuild{ProjectID: opts.gcpProject}},
+	}
+
 	opts.storyConfig.Build.TagPolicy.EnvTemplateTagger = &v1alpha2.EnvTemplateTagger{Template: storyTag}
 
 	for project := range opts.story.Deployables {
