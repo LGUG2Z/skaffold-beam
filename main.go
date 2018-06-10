@@ -61,8 +61,8 @@ func main() {
 			},
 		}
 
-		masterConfig := baseSkaffoldConfig(gcpProject)
-		storyConfig := baseSkaffoldConfig(gcpProject)
+		masterConfig := baseSkaffoldConfig()
+		storyConfig := baseSkaffoldConfig()
 
 		if err := enrichSkaffoldConfigs(masterConfig, storyConfig, &m, gcpProject, inputPath, outputPath); err != nil {
 			return err
@@ -104,6 +104,9 @@ func enrichSkaffoldConfigs(masterConfig, storyConfig *v1alpha2.SkaffoldConfig, s
 		return err
 	}
 
+	storyConfig.Build = v1alpha2.BuildConfig{}
+	storyConfig.Build.TagPolicy.EnvTemplateTagger = &v1alpha2.EnvTemplateTagger{Template: storyTag}
+
 	for project := range story.Deployables {
 		masterConfig.Deploy.KubectlDeploy.Manifests =
 			append(
@@ -118,7 +121,6 @@ func enrichSkaffoldConfigs(masterConfig, storyConfig *v1alpha2.SkaffoldConfig, s
 				ArtifactType: v1alpha2.ArtifactType{DockerArtifact: &v1alpha2.DockerArtifact{DockerfilePath: "Dockerfile"}},
 			})
 
-			storyConfig.Build.TagPolicy.EnvTemplateTagger.Template = storyTag
 
 			storyConfig.Deploy.KubectlDeploy.Manifests =
 				append(
@@ -129,7 +131,7 @@ func enrichSkaffoldConfigs(masterConfig, storyConfig *v1alpha2.SkaffoldConfig, s
 
 		projectManifests, err := afero.ReadDir(story.Fs, fmt.Sprintf("%s/%s", inputPath, project))
 		if err != nil {
-			return err
+			fmt.Printf("manifests not found for %s, continuing\n", project)
 		}
 
 		if err := story.Fs.MkdirAll(fmt.Sprintf("%s/%s", outputPath, project), os.FileMode(0700)); err != nil {
@@ -140,6 +142,9 @@ func enrichSkaffoldConfigs(masterConfig, storyConfig *v1alpha2.SkaffoldConfig, s
 			return err
 		}
 	}
+
+	sort.Strings(storyConfig.Deploy.KubectlDeploy.Manifests)
+	sort.Strings(masterConfig.Deploy.KubectlDeploy.Manifests)
 
 	return nil
 }
@@ -174,15 +179,10 @@ func updateManifestsForSkaffold(story *meta.Manifest, projectManifests []os.File
 	return nil
 }
 
-func baseSkaffoldConfig(gcpProject string) *v1alpha2.SkaffoldConfig {
+func baseSkaffoldConfig() *v1alpha2.SkaffoldConfig {
 	return &v1alpha2.SkaffoldConfig{
 		APIVersion: v1alpha2.Version,
 		Kind:       "Config",
-		Build: v1alpha2.BuildConfig{
-			TagPolicy: v1alpha2.TagPolicy{EnvTemplateTagger: &v1alpha2.EnvTemplateTagger{}},
-			Artifacts: []*v1alpha2.Artifact{},
-			BuildType: v1alpha2.BuildType{GoogleCloudBuild: &v1alpha2.GoogleCloudBuild{ProjectID: gcpProject}},
-		},
 		Deploy: v1alpha2.DeployConfig{
 			DeployType: v1alpha2.DeployType{KubectlDeploy: &v1alpha2.KubectlDeploy{RemoteManifests: []string{}}},
 		},
