@@ -56,8 +56,8 @@ func main() {
 			Kind:       "Config",
 			Deploy: v1alpha2.DeployConfig{
 				DeployType: v1alpha2.DeployType{KubectlDeploy: &v1alpha2.KubectlDeploy{
-					Manifests: []string{fmt.Sprintf("%s/infra/*.yaml", outputPath)}},
-				},
+					Manifests: []string{fmt.Sprintf("%s/infra/*.yaml", outputPath)},
+				}},
 			},
 		}
 
@@ -125,19 +125,19 @@ func enrichSkaffoldConfigs(masterConfig, storyConfig *v1alpha2.SkaffoldConfig, s
 					storyConfig.Deploy.KubectlDeploy.Manifests,
 					fmt.Sprintf("%s/%s/*.yaml", outputPath, project),
 				)
+		}
 
-			if err := story.Fs.MkdirAll(fmt.Sprintf("%s/%s", outputPath, project), os.FileMode(0700)); err != nil {
-				return err
-			}
+		projectManifests, err := afero.ReadDir(story.Fs, fmt.Sprintf("%s/%s", inputPath, project))
+		if err != nil {
+			return err
+		}
 
-			projectManifests, err := afero.ReadDir(story.Fs, fmt.Sprintf("%s/%s", inputPath, project))
-			if err != nil {
-				return err
-			}
+		if err := story.Fs.MkdirAll(fmt.Sprintf("%s/%s", outputPath, project), os.FileMode(0700)); err != nil {
+			return err
+		}
 
-			if err := updateManifestsForSkaffold(story, projectManifests, inputPath, outputPath, project); err != nil {
-				return err
-			}
+		if err := updateManifestsForSkaffold(story, projectManifests, inputPath, outputPath, project); err != nil {
+			return err
 		}
 	}
 
