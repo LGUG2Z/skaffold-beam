@@ -1,0 +1,15 @@
+package: github.com/LGUG2Z/skaffold-beam
+import:
+- package: github.com/GoogleContainerTools/skaffold
+  version: v0.7.0
+  subpackages:
+  - pkg/skaffold/schema/v1alpha2
+- package: github.com/LGUG2Z/story
+  subpackages:
+  - meta
+- package: github.com/spf13/afero
+  version: v1.1.0
+- package: github.com/urfave/cli
+  version: v1.20.0
+- package: gopkg.in/yaml.v2
+  version: v2.2.1
