@@ -6,6 +6,9 @@ import (
 
 	"os"
 
+	"sort"
+	"strings"
+
 	"github.com/GoogleContainerTools/skaffold/pkg/skaffold/schema/v1alpha2"
 	"github.com/LGUG2Z/story/meta"
 	"github.com/spf13/afero"
@@ -43,38 +46,31 @@ func main() {
 		manifestPath := c.String("manifest-path")
 		gcpProject := c.String("gcp-project")
 
-		infraManifests := fmt.Sprintf("%s/infra/*.yaml", manifestPath)
 		infraConfig := v1alpha2.SkaffoldConfig{
 			APIVersion: v1alpha2.Version,
 			Kind:       "Config",
 			Deploy: v1alpha2.DeployConfig{
-				DeployType: v1alpha2.DeployType{KubectlDeploy: &v1alpha2.KubectlDeploy{Manifests: []string{infraManifests}}},
+				DeployType: v1alpha2.DeployType{KubectlDeploy: &v1alpha2.KubectlDeploy{
+					Manifests: []string{fmt.Sprintf("%s/infra/*.yaml", manifestPath)}},
+				},
 			},
 		}
 
-		masterTagTemplate := fmt.Sprintf("{{.IMAGE_NAME}}:master-{{.DIGEST}}")
-		masterConfig := baseSkaffoldConfig(masterTagTemplate, gcpProject)
-
-		storyTagTemplate := fmt.Sprintf("{{.IMAGE_NAME}}:%s-{{.USER}}-{{.DIGEST}}", m.Name)
-		storyConfig := baseSkaffoldConfig(storyTagTemplate, gcpProject)
+		masterConfig := baseSkaffoldConfig(gcpProject)
+		storyConfig := baseSkaffoldConfig(gcpProject)
 
 		// TODO: Unmarshal the current k8s manifests, update them to set the namespace for the story
 
-		enrichSkaffoldConfigs(masterConfig, storyConfig, m.Deployables, gcpProject, manifestPath)
-
-		if err := writeConfig(fs, &infraConfig, "skaffold-infra.yaml"); err != nil {
+		if err := enrichSkaffoldConfigs(masterConfig, storyConfig, &m, gcpProject, manifestPath); err != nil {
 			return err
 		}
 
-		if err := writeConfig(fs, masterConfig, "skaffold-master.yaml"); err != nil {
-			return err
-		}
+		configMap := make(map[string]*v1alpha2.SkaffoldConfig)
+		configMap["skaffold-infra.yaml"] = &infraConfig
+		configMap["skaffold-master.yaml"] = masterConfig
+		configMap["skaffold-story.yaml"] = storyConfig
 
-		if err := writeConfig(fs, storyConfig, "skaffold-story.yaml"); err != nil {
-			return err
-		}
-
-		return nil
+		return writeConfigs(fs, configMap)
 	})
 
 	if err := sb.Run(os.Args); err != nil {
@@ -82,26 +78,44 @@ func main() {
 	}
 }
 
-func enrichSkaffoldConfigs(masterConfig, storyConfig *v1alpha2.SkaffoldConfig, deployables map[string]bool, gcpProject, manifestPath string) {
-	for project, _ := range deployables {
-		masterConfig.Build.Artifacts = append(masterConfig.Build.Artifacts, &v1alpha2.Artifact{
-			ImageName:    fmt.Sprintf("gcr.io/%s/%s", gcpProject, project),
-			Workspace:    project,
-			ArtifactType: v1alpha2.ArtifactType{DockerArtifact: &v1alpha2.DockerArtifact{DockerfilePath: "Dockerfile"}},
-		})
+func calculateStoryTag(story *meta.Manifest) (string, error) {
+	var hashes []string
 
+	for project, _ := range story.Projects {
+		bytes, err := afero.ReadFile(m.Fs, fmt.Sprintf("%s/.git/refs/heads/%s", project, m.Name))
+		if err != nil {
+			return "", err
+		}
+
+		hashes = append(hashes, fmt.Sprintf("%s-%s", project, string(bytes)[0:7]))
+	}
+
+	sort.Strings(hashes)
+
+	return fmt.Sprintf("{{.IMAGE_NAME}}:%s", strings.Join(hashes, "-")), nil
+}
+
+func enrichSkaffoldConfigs(masterConfig, storyConfig *v1alpha2.SkaffoldConfig, story *meta.Manifest, gcpProject, manifestPath string) error {
+	storyTag, err := calculateStoryTag(story)
+	if err != nil {
+		return err
+	}
+
+	for project, _ := range story.Deployables {
 		masterConfig.Deploy.KubectlDeploy.Manifests =
 			append(
 				masterConfig.Deploy.KubectlDeploy.Manifests,
 				fmt.Sprintf("%s/%s/*.yaml", manifestPath, project),
 			)
 
-		if deployables[project] {
+		if story.Deployables[project] {
 			storyConfig.Build.Artifacts = append(storyConfig.Build.Artifacts, &v1alpha2.Artifact{
-				ImageName:    fmt.Sprintf("gcr.io/%s/%s", gcpProject, project),
+				ImageName:    fmt.Sprintf("gcr.io/%s/%s-%s", gcpProject, project, story.Name),
 				Workspace:    project,
 				ArtifactType: v1alpha2.ArtifactType{DockerArtifact: &v1alpha2.DockerArtifact{DockerfilePath: "Dockerfile"}},
 			})
+
+			storyConfig.Build.TagPolicy.EnvTemplateTagger.Template = storyTag
 
 			storyConfig.Deploy.KubectlDeploy.Manifests =
 				append(
@@ -110,14 +124,16 @@ func enrichSkaffoldConfigs(masterConfig, storyConfig *v1alpha2.SkaffoldConfig, d
 				)
 		}
 	}
+
+	return nil
 }
 
-func baseSkaffoldConfig(tagTemplate string, gcpProject string) *v1alpha2.SkaffoldConfig {
+func baseSkaffoldConfig(gcpProject string) *v1alpha2.SkaffoldConfig {
 	return &v1alpha2.SkaffoldConfig{
 		APIVersion: v1alpha2.Version,
 		Kind:       "Config",
 		Build: v1alpha2.BuildConfig{
-			TagPolicy: v1alpha2.TagPolicy{EnvTemplateTagger: &v1alpha2.EnvTemplateTagger{Template: tagTemplate}},
+			TagPolicy: v1alpha2.TagPolicy{EnvTemplateTagger: &v1alpha2.EnvTemplateTagger{}},
 			Artifacts: []*v1alpha2.Artifact{},
 			BuildType: v1alpha2.BuildType{GoogleCloudBuild: &v1alpha2.GoogleCloudBuild{ProjectID: gcpProject}},
 		},
@@ -127,11 +143,17 @@ func baseSkaffoldConfig(tagTemplate string, gcpProject string) *v1alpha2.Skaffol
 	}
 }
 
-func writeConfig(fs afero.Fs, config *v1alpha2.SkaffoldConfig, filename string) error {
-	bytes, err := yaml.Marshal(config)
-	if err != nil {
-		return err
+func writeConfigs(fs afero.Fs, configs map[string]*v1alpha2.SkaffoldConfig) error {
+	for filename, config := range configs {
+		bytes, err := yaml.Marshal(config)
+		if err != nil {
+			return err
+		}
+
+		if err := afero.WriteFile(fs, filename, bytes, os.FileMode(0666)); err != nil {
+			return err
+		}
 	}
 
-	return afero.WriteFile(fs, filename, bytes, os.FileMode(0666))
+	return nil
 }
