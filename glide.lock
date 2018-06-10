@@ -1,5 +1,5 @@
 hash: 9d3df078c39c3e1958732a71388b53033ebf74ee98b5cb96b75a2d4e2306c905
-updated: 2018-06-10T08:42:39.424266+01:00
+updated: 2018-06-10T16:56:31.64951+01:00
 imports:
 - name: github.com/AlexsJones/cli
   version: ec4e2a07c8a3a526b19d42a62facad11dbf22f00
@@ -79,35 +79,33 @@ imports:
 - name: github.com/xanzy/ssh-agent
   version: ba9c9e33906f58169366275e3450db66139a31a9
 - name: golang.org/x/crypto
-  version: 8ac0e0d97ce45cd83d1d7243c060cb8461dda5e9
+  version: 81e90905daefcd6fd217b62423c0908922eadb30
   subpackages:
   - cast5
   - curve25519
   - ed25519
   - ed25519/internal/edwards25519
-  - internal/chacha20
   - openpgp
   - openpgp/armor
   - openpgp/elgamal
   - openpgp/errors
   - openpgp/packet
   - openpgp/s2k
-  - poly1305
   - ssh
   - ssh/agent
   - ssh/knownhosts
   - ssh/terminal
 - name: golang.org/x/net
-  version: 1e491301e022f8f977054da4c2d852decd59571f
+  version: 1c05540f6879653db88113bc4a2b70aec4bd491f
   subpackages:
   - context
 - name: golang.org/x/sys
-  version: 9527bec2660bd847c050fda93a0f0c6dee0800bb
+  version: 95c6576299259db960f6c5b9b69ea52422860fce
   subpackages:
   - unix
   - windows
 - name: golang.org/x/text
-  version: 5c1cf69b5978e5a34c5f9ba09a83e56acc4b7877
+  version: b19bf474d317b857955b12035d2c5acb57ce8b01
   subpackages:
   - transform
   - unicode/norm

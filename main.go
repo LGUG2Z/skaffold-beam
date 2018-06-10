@@ -9,6 +9,9 @@ import (
 	"sort"
 	"strings"
 
+	"bytes"
+	"text/template"
+
 	"github.com/GoogleContainerTools/skaffold/pkg/skaffold/schema/v1alpha2"
 	"github.com/LGUG2Z/story/meta"
 	"github.com/spf13/afero"
@@ -33,7 +36,8 @@ func main() {
 	sb.Authors = []cli.Author{{Name: "J. Iqbal", Email: "jade@beamery.com"}}
 	sb.Flags = []cli.Flag{
 		cli.StringFlag{Name: "gcp-project, p"},
-		cli.StringFlag{Name: "manifest-path, m", Value: "manifests"},
+		cli.StringFlag{Name: "input-path, i"},
+		cli.StringFlag{Name: "output-path, o", Value: "manifests"},
 	}
 
 	sb.Before = func(c *cli.Context) error {
@@ -43,7 +47,8 @@ func main() {
 	}
 
 	sb.Action = cli.ActionFunc(func(c *cli.Context) error {
-		manifestPath := c.String("manifest-path")
+		outputPath := c.String("output-path")
+		inputPath := c.String("input-path")
 		gcpProject := c.String("gcp-project")
 
 		infraConfig := v1alpha2.SkaffoldConfig{
@@ -51,7 +56,7 @@ func main() {
 			Kind:       "Config",
 			Deploy: v1alpha2.DeployConfig{
 				DeployType: v1alpha2.DeployType{KubectlDeploy: &v1alpha2.KubectlDeploy{
-					Manifests: []string{fmt.Sprintf("%s/infra/*.yaml", manifestPath)}},
+					Manifests: []string{fmt.Sprintf("%s/infra/*.yaml", outputPath)}},
 				},
 			},
 		}
@@ -59,9 +64,7 @@ func main() {
 		masterConfig := baseSkaffoldConfig(gcpProject)
 		storyConfig := baseSkaffoldConfig(gcpProject)
 
-		// TODO: Unmarshal the current k8s manifests, update them to set the namespace for the story
-
-		if err := enrichSkaffoldConfigs(masterConfig, storyConfig, &m, gcpProject, manifestPath); err != nil {
+		if err := enrichSkaffoldConfigs(masterConfig, storyConfig, &m, gcpProject, inputPath, outputPath); err != nil {
 			return err
 		}
 
@@ -87,7 +90,7 @@ func calculateStoryTag(story *meta.Manifest) (string, error) {
 			return "", err
 		}
 
-		hashes = append(hashes, fmt.Sprintf("%s-%s", project, string(bytes)[0:7]))
+		hashes = append(hashes, fmt.Sprintf("%s-%s-%s", m.Name, project, string(bytes)[0:7]))
 	}
 
 	sort.Strings(hashes)
@@ -95,7 +98,7 @@ func calculateStoryTag(story *meta.Manifest) (string, error) {
 	return fmt.Sprintf("{{.IMAGE_NAME}}:%s", strings.Join(hashes, "-")), nil
 }
 
-func enrichSkaffoldConfigs(masterConfig, storyConfig *v1alpha2.SkaffoldConfig, story *meta.Manifest, gcpProject, manifestPath string) error {
+func enrichSkaffoldConfigs(masterConfig, storyConfig *v1alpha2.SkaffoldConfig, story *meta.Manifest, gcpProject, inputPath, outputPath string) error {
 	storyTag, err := calculateStoryTag(story)
 	if err != nil {
 		return err
@@ -105,12 +108,12 @@ func enrichSkaffoldConfigs(masterConfig, storyConfig *v1alpha2.SkaffoldConfig, s
 		masterConfig.Deploy.KubectlDeploy.Manifests =
 			append(
 				masterConfig.Deploy.KubectlDeploy.Manifests,
-				fmt.Sprintf("%s/%s/*.yaml", manifestPath, project),
+				fmt.Sprintf("%s/%s/*.yaml", outputPath, project),
 			)
 
 		if story.Deployables[project] {
 			storyConfig.Build.Artifacts = append(storyConfig.Build.Artifacts, &v1alpha2.Artifact{
-				ImageName:    fmt.Sprintf("gcr.io/%s/%s-%s", gcpProject, project, story.Name),
+				ImageName:    fmt.Sprintf("gcr.io/%s/%s", gcpProject, project),
 				Workspace:    project,
 				ArtifactType: v1alpha2.ArtifactType{DockerArtifact: &v1alpha2.DockerArtifact{DockerfilePath: "Dockerfile"}},
 			})
@@ -120,8 +123,44 @@ func enrichSkaffoldConfigs(masterConfig, storyConfig *v1alpha2.SkaffoldConfig, s
 			storyConfig.Deploy.KubectlDeploy.Manifests =
 				append(
 					storyConfig.Deploy.KubectlDeploy.Manifests,
-					fmt.Sprintf("%s/%s/*.yaml", manifestPath, project),
+					fmt.Sprintf("%s/%s/*.yaml", outputPath, project),
 				)
+
+			if err := m.Fs.MkdirAll(fmt.Sprintf("%s/%s", outputPath, project), os.FileMode(0700)); err != nil {
+				return err
+			}
+
+			projectManifests, err := afero.ReadDir(m.Fs, fmt.Sprintf("%s/%s", inputPath, project))
+			if err != nil {
+				return err
+			}
+
+			for _, projectManifest := range projectManifests {
+				relativePathToManifest := fmt.Sprintf("%s/%s/%s", inputPath, project, projectManifest.Name())
+				b, err := afero.ReadFile(m.Fs, relativePathToManifest)
+				if err != nil {
+					return err
+				}
+
+				variables := make(map[string]string)
+				variables["namespace"] = m.Name
+
+				tpl, err := template.New(relativePathToManifest).Parse(string(b))
+				if err != nil {
+					return err
+				}
+
+				buf := bytes.NewBuffer(nil)
+				if err = tpl.Execute(buf, variables); err != nil {
+					return err
+				}
+
+				outputPath := fmt.Sprintf("%s/%s/%s", outputPath, project, projectManifest.Name())
+
+				if err := afero.WriteFile(m.Fs, outputPath, buf.Bytes(), os.FileMode(0666)); err != nil {
+					return err
+				}
+			}
 		}
 	}
 
