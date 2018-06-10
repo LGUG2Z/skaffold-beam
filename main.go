@@ -20,19 +20,19 @@ import (
 )
 
 const (
-	AppName    = "skaffold-beam"
-	AppVersion = "0.1"
-)
-
-var (
-	fs afero.Fs
-	m  meta.Manifest
+	appName    = "skaffold-beam"
+	appVersion = "0.1"
 )
 
 func main() {
+	var (
+		fs afero.Fs
+		m  meta.Manifest
+	)
+
 	sb := cli.NewApp()
-	sb.Name = AppName
-	sb.Version = AppVersion
+	sb.Name = appName
+	sb.Version = appVersion
 	sb.Authors = []cli.Author{{Name: "J. Iqbal", Email: "jade@beamery.com"}}
 	sb.Flags = []cli.Flag{
 		cli.StringFlag{Name: "gcp-project, p"},
@@ -84,18 +84,18 @@ func main() {
 func calculateStoryTag(story *meta.Manifest) (string, error) {
 	var hashes []string
 
-	for project, _ := range story.Projects {
-		bytes, err := afero.ReadFile(m.Fs, fmt.Sprintf("%s/.git/refs/heads/%s", project, m.Name))
+	for project := range story.Projects {
+		bytes, err := afero.ReadFile(story.Fs, fmt.Sprintf("%s/.git/refs/heads/%s", project, story.Name))
 		if err != nil {
 			return "", err
 		}
 
-		hashes = append(hashes, fmt.Sprintf("%s-%s-%s", m.Name, project, string(bytes)[0:7]))
+		hashes = append(hashes, fmt.Sprintf("%s-%s", project, string(bytes)[0:7]))
 	}
 
 	sort.Strings(hashes)
 
-	return fmt.Sprintf("{{.IMAGE_NAME}}:%s", strings.Join(hashes, "-")), nil
+	return fmt.Sprintf("{{.IMAGE_NAME}}:%s-%s", story.Name, strings.Join(hashes, "-")), nil
 }
 
 func enrichSkaffoldConfigs(masterConfig, storyConfig *v1alpha2.SkaffoldConfig, story *meta.Manifest, gcpProject, inputPath, outputPath string) error {
@@ -104,7 +104,7 @@ func enrichSkaffoldConfigs(masterConfig, storyConfig *v1alpha2.SkaffoldConfig, s
 		return err
 	}
 
-	for project, _ := range story.Deployables {
+	for project := range story.Deployables {
 		masterConfig.Deploy.KubectlDeploy.Manifests =
 			append(
 				masterConfig.Deploy.KubectlDeploy.Manifests,
@@ -126,41 +126,48 @@ func enrichSkaffoldConfigs(masterConfig, storyConfig *v1alpha2.SkaffoldConfig, s
 					fmt.Sprintf("%s/%s/*.yaml", outputPath, project),
 				)
 
-			if err := m.Fs.MkdirAll(fmt.Sprintf("%s/%s", outputPath, project), os.FileMode(0700)); err != nil {
+			if err := story.Fs.MkdirAll(fmt.Sprintf("%s/%s", outputPath, project), os.FileMode(0700)); err != nil {
 				return err
 			}
 
-			projectManifests, err := afero.ReadDir(m.Fs, fmt.Sprintf("%s/%s", inputPath, project))
+			projectManifests, err := afero.ReadDir(story.Fs, fmt.Sprintf("%s/%s", inputPath, project))
 			if err != nil {
 				return err
 			}
 
-			for _, projectManifest := range projectManifests {
-				relativePathToManifest := fmt.Sprintf("%s/%s/%s", inputPath, project, projectManifest.Name())
-				b, err := afero.ReadFile(m.Fs, relativePathToManifest)
-				if err != nil {
-					return err
-				}
-
-				variables := make(map[string]string)
-				variables["namespace"] = m.Name
-
-				tpl, err := template.New(relativePathToManifest).Parse(string(b))
-				if err != nil {
-					return err
-				}
-
-				buf := bytes.NewBuffer(nil)
-				if err = tpl.Execute(buf, variables); err != nil {
-					return err
-				}
-
-				outputPath := fmt.Sprintf("%s/%s/%s", outputPath, project, projectManifest.Name())
-
-				if err := afero.WriteFile(m.Fs, outputPath, buf.Bytes(), os.FileMode(0666)); err != nil {
-					return err
-				}
+			if err := updateManifestsForSkaffold(story, projectManifests, inputPath, outputPath, project); err != nil {
+				return err
 			}
+		}
+	}
+
+	return nil
+}
+
+func updateManifestsForSkaffold(story *meta.Manifest, projectManifests []os.FileInfo, inputPath, outputPath, project string) error {
+	for _, projectManifest := range projectManifests {
+		relativePathToManifest := fmt.Sprintf("%s/%s/%s", inputPath, project, projectManifest.Name())
+		b, err := afero.ReadFile(story.Fs, relativePathToManifest)
+		if err != nil {
+			return err
+		}
+
+		variables := make(map[string]string)
+		variables["namespace"] = story.Name
+
+		tpl, err := template.New(relativePathToManifest).Parse(string(b))
+		if err != nil {
+			return err
+		}
+
+		buf := bytes.NewBuffer(nil)
+		if err = tpl.Execute(buf, variables); err != nil {
+			return err
+		}
+
+		relativeOutputPath := fmt.Sprintf("%s/%s/%s", outputPath, project, projectManifest.Name())
+		if err := afero.WriteFile(story.Fs, relativeOutputPath, buf.Bytes(), os.FileMode(0666)); err != nil {
+			return err
 		}
 	}
 
