@@ -1,5 +1,5 @@
-hash: 80b5172d0b1c3198e4830a4f8fed18c6717dd6105e6ababb44720a8764166aba
-updated: 2018-06-15T23:10:24.270258+01:00
+hash: 10b039ec6083a32113c97fb22ee54a30aa7172318237f4a5b22400700f4386d2
+updated: 2018-06-16T08:25:53.044223+01:00
 imports:
 - name: github.com/AlexsJones/cli
   version: ec4e2a07c8a3a526b19d42a62facad11dbf22f00
@@ -41,7 +41,7 @@ imports:
   subpackages:
   - blastradius
 - name: github.com/LGUG2Z/story
-  version: a60be90bcebaf0aecac0cac3d4b9f7347474eb04
+  version: 348dcd28c59c014e40b5bee20f0cd4c91605bbf9
   subpackages:
   - manifest
   - node

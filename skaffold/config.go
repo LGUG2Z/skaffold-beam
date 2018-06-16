@@ -60,14 +60,14 @@ func LocalManifests(fs afero.Fs, opts *LocalManifestOpts) error {
 
 	opts.StoryConfig.Build.TagPolicy.EnvTemplateTagger = &v1alpha2.EnvTemplateTagger{Template: storyTag}
 
-	for project := range opts.Story.Deployables {
+	for project := range opts.Story.Artifacts {
 		opts.ProjectConfig.Deploy.KubectlDeploy.Manifests =
 			append(
 				opts.ProjectConfig.Deploy.KubectlDeploy.Manifests,
 				fmt.Sprintf("%s/%s/*.yaml", opts.OutputPath, project),
 			)
 
-		if opts.Story.Deployables[project] {
+		if opts.Story.Artifacts[project] {
 			opts.StoryConfig.Build.Artifacts = append(opts.StoryConfig.Build.Artifacts, &v1alpha2.Artifact{
 				ImageName:    fmt.Sprintf("gcr.io/%s/%s", opts.GCPProject, project),
 				Workspace:    project,
@@ -119,8 +119,8 @@ func RemoteManifests(fs afero.Fs, opts *RemoteManifestOpts) error {
 
 	opts.StoryConfig.Build.TagPolicy.EnvTemplateTagger = &v1alpha2.EnvTemplateTagger{Template: storyTag}
 
-	for project := range opts.Story.Deployables {
-		if opts.Story.Deployables[project] {
+	for project := range opts.Story.Artifacts {
+		if opts.Story.Artifacts[project] {
 			opts.StoryConfig.Build.Artifacts = append(opts.StoryConfig.Build.Artifacts, &v1alpha2.Artifact{
 				ImageName:    fmt.Sprintf("gcr.io/%s/%s", opts.GCPProject, project),
 				Workspace:    project,

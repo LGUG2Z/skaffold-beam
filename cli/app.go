@@ -10,7 +10,7 @@ func App() *cli.App {
 	app := cli.NewApp()
 
 	app.Name = "skaffold-beam"
-	app.Usage = "A dynamic, blast radius-aware skaffold manifest generator for story-driven meta-repo projects"
+	app.Usage = "A blast radius-aware Skaffold manifest generator for story-driven meta-repos"
 	app.Version = "0.1"
 	app.HideHelp = true
 	app.HideVersion = true

@@ -5,7 +5,7 @@ import:
   subpackages:
   - pkg/skaffold/schema/v1alpha2
 - package: github.com/LGUG2Z/story
-  version: a60be90bcebaf0aecac0cac3d4b9f7347474eb04
+  version: 348dcd28c59c014e40b5bee20f0cd4c91605bbf9
   subpackages:
   - manifest
 - package: github.com/spf13/afero
