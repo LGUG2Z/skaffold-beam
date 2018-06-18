@@ -170,15 +170,14 @@ func templateManifests(fs afero.Fs, story *manifest.Story, manifests []os.FileIn
 }
 
 func calculateStoryTag(fs afero.Fs, story *manifest.Story) (string, error) {
+	commitHashes, err := story.GetCommitHashes(fs)
+	if err != nil {
+		return "", err
+	}
+
 	var hashes []string
-
-	for project := range story.Projects {
-		bytes, err := afero.ReadFile(fs, fmt.Sprintf("%s/.git/refs/heads/%s", project, story.Name))
-		if err != nil {
-			return "", err
-		}
-
-		hashes = append(hashes, fmt.Sprintf("%s-%s", project, string(bytes)[0:7]))
+	for project, hash := range commitHashes {
+		hashes = append(hashes, fmt.Sprintf("%s-%s", project, hash[0:7]))
 	}
 
 	sort.Strings(hashes)

@@ -1,5 +1,5 @@
-hash: 10b039ec6083a32113c97fb22ee54a30aa7172318237f4a5b22400700f4386d2
-updated: 2018-06-16T08:25:53.044223+01:00
+hash: 0fd8825238da186b052b70ef2534a1d2871c393601ae914555d53381e82a722b
+updated: 2018-06-18T09:32:46.691669+01:00
 imports:
 - name: github.com/AlexsJones/cli
   version: ec4e2a07c8a3a526b19d42a62facad11dbf22f00
@@ -41,10 +41,9 @@ imports:
   subpackages:
   - blastradius
 - name: github.com/LGUG2Z/story
-  version: 348dcd28c59c014e40b5bee20f0cd4c91605bbf9
+  version: c0dfae6c33c8fd9c1c6d1a26627fc16ff625b443
   subpackages:
   - manifest
-  - node
 - name: github.com/mattn/go-colorable
   version: efa589957cd060542a26d2dd7832fd6a6c6c3ade
 - name: github.com/mattn/go-isatty
