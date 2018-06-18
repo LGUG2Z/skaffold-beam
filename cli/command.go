@@ -18,17 +18,15 @@ func LocalCmd(fs afero.Fs) cli.Command {
 			cli.StringFlag{Name: "templates, t", Usage: "relative path to manifest templates directory"},
 			cli.StringFlag{Name: "output, o", Usage: "relative path manifest output directory"},
 		},
-		Before: cli.BeforeFunc(func(c *cli.Context) error {
-			if c.String("gcp-project") == "" {
+		Action: cli.ActionFunc(func(c *cli.Context) error {
+			if c.GlobalString("gcp-project") == "" {
 				return fmt.Errorf("a Google Cloud Platform project id is required")
 			}
 
 			if c.String("templates") == "" || c.String("output") == "" {
 				return fmt.Errorf("local manifest template directory is required")
 			}
-			return nil
-		}),
-		Action: cli.ActionFunc(func(c *cli.Context) error {
+
 			story, err := manifest.LoadStory(fs)
 			if err != nil {
 				return err
@@ -37,7 +35,7 @@ func LocalCmd(fs afero.Fs) cli.Command {
 			opts := &skaffold.LocalManifestOpts{
 				Story:         story,
 				StoryConfig:   skaffold.NewConfig(),
-				GCPProject:    c.String("gcp-project"),
+				GCPProject:    c.GlobalString("gcp-project"),
 				ProjectConfig: skaffold.NewConfig(),
 				TemplatePath:  c.String("templates"),
 				OutputPath:    c.String("output"),
@@ -60,14 +58,11 @@ func RemoteCmd(fs afero.Fs) cli.Command {
 	return cli.Command{
 		Name:  "remote",
 		Usage: "Generates a Skaffold Config for remote manifests on a cluster",
-		Before: cli.BeforeFunc(func(c *cli.Context) error {
-			if c.String("gcp-project") == "" {
+		Action: cli.ActionFunc(func(c *cli.Context) error {
+			if c.GlobalString("gcp-project") == "" {
 				return fmt.Errorf("a Google Cloud Platform project id is required")
 			}
 
-			return nil
-		}),
-		Action: cli.ActionFunc(func(c *cli.Context) error {
 			story, err := manifest.LoadStory(fs)
 			if err != nil {
 				return err
@@ -76,7 +71,7 @@ func RemoteCmd(fs afero.Fs) cli.Command {
 			opts := &skaffold.RemoteManifestOpts{
 				Story:       story,
 				StoryConfig: skaffold.NewConfig(),
-				GCPProject:  c.String("gcp-project"),
+				GCPProject:  c.GlobalString("gcp-project"),
 			}
 
 			configMap := make(map[string]*v1alpha2.SkaffoldConfig)
