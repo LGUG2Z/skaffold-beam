@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"sort"
-	"strings"
 	"text/template"
 
 	"github.com/GoogleContainerTools/skaffold/pkg/skaffold/schema/v1alpha2"
@@ -49,16 +48,16 @@ type LocalManifestOpts struct {
 }
 
 func LocalManifests(fs afero.Fs, opts *LocalManifestOpts) error {
-	storyTag, err := calculateStoryTag(fs, opts.Story)
-	if err != nil {
-		return err
-	}
+	//storyTag, err := calculateStoryTag(fs, opts.Story)
+	//if err != nil {
+	//	return err
+	//}
 
 	opts.StoryConfig.Build = v1alpha2.BuildConfig{BuildType: v1alpha2.BuildType{
 		GoogleCloudBuild: &v1alpha2.GoogleCloudBuild{ProjectID: opts.GCPProject}},
 	}
 
-	opts.StoryConfig.Build.TagPolicy.EnvTemplateTagger = &v1alpha2.EnvTemplateTagger{Template: storyTag}
+	//opts.StoryConfig.Build.TagPolicy.EnvTemplateTagger = &v1alpha2.EnvTemplateTagger{Template: storyTag}
 
 	for project := range opts.Story.Artifacts {
 		opts.ProjectConfig.Deploy.KubectlDeploy.Manifests =
@@ -108,16 +107,16 @@ type RemoteManifestOpts struct {
 }
 
 func RemoteManifests(fs afero.Fs, opts *RemoteManifestOpts) error {
-	storyTag, err := calculateStoryTag(fs, opts.Story)
-	if err != nil {
-		return err
-	}
+	//storyTag, err := calculateStoryTag(fs, opts.Story)
+	//if err != nil {
+	//	return err
+	//}
 
 	opts.StoryConfig.Build = v1alpha2.BuildConfig{BuildType: v1alpha2.BuildType{
 		GoogleCloudBuild: &v1alpha2.GoogleCloudBuild{ProjectID: opts.GCPProject}},
 	}
 
-	opts.StoryConfig.Build.TagPolicy.EnvTemplateTagger = &v1alpha2.EnvTemplateTagger{Template: storyTag}
+	//opts.StoryConfig.Build.TagPolicy.EnvTemplateTagger = &v1alpha2.EnvTemplateTagger{Template: storyTag}
 
 	for project := range opts.Story.Artifacts {
 		if opts.Story.Artifacts[project] {
@@ -169,18 +168,18 @@ func templateManifests(fs afero.Fs, story *manifest.Story, manifests []os.FileIn
 	return nil
 }
 
-func calculateStoryTag(fs afero.Fs, story *manifest.Story) (string, error) {
-	commitHashes, err := story.GetCommitHashes(fs)
-	if err != nil {
-		return "", err
-	}
-
-	var hashes []string
-	for project, hash := range commitHashes {
-		hashes = append(hashes, fmt.Sprintf("%s-%s", project, hash[0:7]))
-	}
-
-	sort.Strings(hashes)
-
-	return fmt.Sprintf("{{.IMAGE_NAME}}:%s-%s", story.Name, strings.Join(hashes, "-")), nil
-}
+//func calculateStoryTag(fs afero.Fs, story *manifest.Story) (string, error) {
+//	commitHashes, err := story.GetCommitHashes(fs)
+//	if err != nil {
+//		return "", err
+//	}
+//
+//	var hashes []string
+//	for project, hash := range commitHashes {
+//		hashes = append(hashes, fmt.Sprintf("%s-%s", project, hash[0:7]))
+//	}
+//
+//	sort.Strings(hashes)
+//
+//	return fmt.Sprintf("{{.IMAGE_NAME}}:%s-%s", story.Name, strings.Join(hashes, "-")), nil
+//}
