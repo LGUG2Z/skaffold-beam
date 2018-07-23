@@ -11,6 +11,7 @@ import (
 	"github.com/LGUG2Z/story/manifest"
 	"github.com/spf13/afero"
 	"gopkg.in/yaml.v2"
+	"github.com/LGUG2Z/skaffold-beam/config"
 )
 
 func NewConfig() *v1alpha2.SkaffoldConfig {
@@ -137,6 +138,17 @@ func RemoteManifests(fs afero.Fs, opts *RemoteManifestOpts) error {
 	sort.Strings(opts.StoryConfig.Deploy.KubectlDeploy.Manifests)
 
 	return nil
+}
+
+type RemoteManifestWithProjectManifestMapOpts struct {
+	GCPProject         string
+	Story              *manifest.Story
+	ProjectManifestMap *config.ProjectManifestMap
+	ClusterConfigs     []*v1alpha2.SkaffoldConfig
+}
+
+func RemoteManifestsWithProjectManifestMap(opts *RemoteManifestWithProjectManifestMapOpts) {
+
 }
 
 func templateManifests(fs afero.Fs, story *manifest.Story, manifests []os.FileInfo, templatePath, outputPath, project string) error {
