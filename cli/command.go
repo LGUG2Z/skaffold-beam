@@ -8,6 +8,7 @@ import (
 	"github.com/LGUG2Z/story/manifest"
 	"github.com/spf13/afero"
 	"github.com/urfave/cli"
+	"github.com/LGUG2Z/skaffold-beam/config"
 )
 
 func LocalCmd(fs afero.Fs) cli.Command {
@@ -61,6 +62,15 @@ func RemoteCmd(fs afero.Fs) cli.Command {
 		Action: cli.ActionFunc(func(c *cli.Context) error {
 			if c.GlobalString("gcp-project") == "" {
 				return fmt.Errorf("a Google Cloud Platform project id is required")
+			}
+
+			//var projectManifestMap *config.ProjectManifestMap
+			if c.GlobalString("config") != "" {
+				if _, err := config.Load(fs, c.GlobalString("config")); err != nil {
+					return err
+				} else {
+					//projectManifestMap = pmm
+				}
 			}
 
 			story, err := manifest.LoadStory(fs)
