@@ -148,7 +148,29 @@ type RemoteManifestWithProjectManifestMapOpts struct {
 }
 
 func RemoteManifestsWithProjectManifestMap(opts *RemoteManifestWithProjectManifestMapOpts) {
+	for n, cluster := range opts.ProjectManifestMap.Clusters {
+		opts.ClusterConfigs[n].Build = v1alpha2.BuildConfig{BuildType: v1alpha2.BuildType{
+			GoogleCloudBuild: &v1alpha2.GoogleCloudBuild{ProjectID: opts.GCPProject}},
+		}
 
+		for project := range opts.Story.Artifacts {
+			if opts.Story.Artifacts[project] {
+				opts.ClusterConfigs[n].Build.Artifacts = append(opts.ClusterConfigs[n].Build.Artifacts, &v1alpha2.Artifact{
+					ImageName:    fmt.Sprintf("gcr.io/%s/%s", opts.GCPProject, project),
+					Workspace:    project,
+					ArtifactType: v1alpha2.ArtifactType{DockerArtifact: &v1alpha2.DockerArtifact{DockerfilePath: "Dockerfile"}},
+				})
+
+				for _, target := range cluster.Projects[project].Manifests.Targets {
+					opts.ClusterConfigs[n].Deploy.KubectlDeploy.RemoteManifests =
+						append(
+							opts.ClusterConfigs[n].Deploy.KubectlDeploy.RemoteManifests,
+							fmt.Sprintf("%s:%s/%s", cluster.Projects[project].Namespace, cluster.Projects[project].Manifests.Type, target),
+						)
+				}
+			}
+		}
+	}
 }
 
 func templateManifests(fs afero.Fs, story *manifest.Story, manifests []os.FileInfo, templatePath, outputPath, project string) error {

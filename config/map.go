@@ -6,8 +6,11 @@ import (
 )
 
 type Project struct {
-	Namespace  string   `yaml:"namespace"`
-	Deployment []string `yaml:"deployment"`
+	Namespace string `yaml:"namespace"`
+	Manifests struct {
+		Type    string   `yaml:"type"`
+		Targets []string `yaml:"targets"`
+	} `yaml:"manifests"`
 }
 
 type Cluster struct {
