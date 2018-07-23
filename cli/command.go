@@ -69,47 +69,51 @@ func RemoteCmd(fs afero.Fs) cli.Command {
 				return err
 			}
 
-			// TODO: Clean up this mess
-			if c.GlobalString("config") != "" {
-				if pmm, err := config.Load(fs, c.GlobalString("config")); err != nil {
+
+			if c.GlobalString("inventory") != "" {
+				if inventory, err := config.Load(fs, c.GlobalString("inventory")); err != nil {
 					return err
 				} else {
-					return remoteWithProjectManifestMap(c, fs, pmm, story)
+					return remoteWithInventory(c, fs, inventory, story)
 				}
+			} else {
+				return remote(c, fs, story)
 			}
-
-			opts := &skaffold.RemoteManifestOpts{
-				Story:       story,
-				StoryConfig: skaffold.NewConfig(),
-				GCPProject:  c.GlobalString("gcp-project"),
-			}
-
-			configMap := make(map[string]*v1alpha2.SkaffoldConfig)
-			configMap["skaffold-story.yaml"] = opts.StoryConfig
-
-			if err := skaffold.RemoteManifests(fs, opts); err != nil {
-				return err
-			}
-
-			return skaffold.WriteConfigs(fs, configMap)
 		}),
 	}
 }
 
-func remoteWithProjectManifestMap(c *cli.Context, fs afero.Fs, clusters config.Clusters, story *manifest.Story) error {
+func remote(c *cli.Context, fs afero.Fs, story *manifest.Story) error {
+	opts := &skaffold.RemoteManifestOpts{
+		Story:       story,
+		StoryConfig: skaffold.NewConfig(),
+		GCPProject:  c.GlobalString("gcp-project"),
+	}
+
+	configMap := make(map[string]*v1alpha2.SkaffoldConfig)
+	configMap["skaffold-story.yaml"] = opts.StoryConfig
+
+	if err := skaffold.RemoteManifests(fs, opts); err != nil {
+		return err
+	}
+
+	return skaffold.WriteConfigs(fs, configMap)
+}
+
+func remoteWithInventory(c *cli.Context, fs afero.Fs, clusters config.Inventory, story *manifest.Story) error {
 	configMap := make(map[string]*v1alpha2.SkaffoldConfig)
 	for name, _ := range clusters {
 		clusterYAML := fmt.Sprintf("skaffold-%s.yaml", name)
 		configMap[clusterYAML] = skaffold.NewConfig()
 	}
 
-	opts := &skaffold.RemoteManifestWithProjectManifestMapOpts{
+	opts := &skaffold.RemoteManifestWithInventoryOpts{
 		Story:          story,
 		ClusterConfigs: configMap,
 		GCPProject:     c.GlobalString("gcp-project"),
 		Clusters:       clusters,
 	}
 
-	skaffold.RemoteManifestsWithProjectManifestMap(opts)
+	skaffold.RemoteManifestsWithInventory(opts)
 	return skaffold.WriteConfigs(fs, configMap)
 }

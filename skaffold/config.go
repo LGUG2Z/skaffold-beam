@@ -140,15 +140,15 @@ func RemoteManifests(fs afero.Fs, opts *RemoteManifestOpts) error {
 	return nil
 }
 
-type RemoteManifestWithProjectManifestMapOpts struct {
+type RemoteManifestWithInventoryOpts struct {
 	ClusterConfigs map[string]*v1alpha2.SkaffoldConfig
-	Clusters       config.Clusters
+	Clusters       config.Inventory
 	GCPProject     string
 	Story          *manifest.Story
 }
 
 // TODO: Clean up this mess
-func RemoteManifestsWithProjectManifestMap(opts *RemoteManifestWithProjectManifestMapOpts) {
+func RemoteManifestsWithInventory(opts *RemoteManifestWithInventoryOpts) {
 	for cluster, projects := range opts.Clusters {
 		clusterYAML := fmt.Sprintf("skaffold-%s.yaml", cluster)
 

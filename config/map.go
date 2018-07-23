@@ -13,19 +13,20 @@ type Project struct {
 	} `yaml:"manifests"`
 }
 
-type Clusters map[string]map[string]*Project
+type Projects map[string]*Project
+type Inventory map[string]Projects
 
-func Load(fs afero.Fs, filename string) (Clusters, error) {
+func Load(fs afero.Fs, filename string) (Inventory, error) {
 	bytes, err := afero.ReadFile(fs, filename)
 	if err != nil {
 		return nil, err
 	}
 
-	var clusters Clusters
+	var inventory Inventory
 
-	if err := yaml.Unmarshal(bytes, &clusters); err != nil {
+	if err := yaml.Unmarshal(bytes, &inventory); err != nil {
 		return nil, err
 	}
 
-	return clusters, nil
+	return inventory, nil
 }

@@ -19,7 +19,7 @@ func App() *cli.App {
 
 	app.Flags = []cli.Flag{
 		cli.StringFlag{Name: "gcp-project, p", Usage: "GCP project used to build and store images"},
-		cli.StringFlag{Name: "config, c", Usage: "Project-Manifest map configuration YAML"},
+		cli.StringFlag{Name: "inventory, i", Usage: "Inventory YAML of Project-Cluster Manifest mapping"},
 	}
 
 	app.Commands = []cli.Command{
