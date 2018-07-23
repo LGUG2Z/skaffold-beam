@@ -2,7 +2,7 @@ package config
 
 import (
 	"github.com/spf13/afero"
-	"encoding/json"
+	"gopkg.in/yaml.v2"
 )
 
 type Project struct {
@@ -13,25 +13,19 @@ type Project struct {
 	} `yaml:"manifests"`
 }
 
-type Cluster struct {
-	Projects map[string]Project
-}
+type Clusters map[string]map[string]*Project
 
-type ProjectManifestMap struct {
-	Clusters []Cluster
-}
-
-func Load(fs afero.Fs, filename string) (*ProjectManifestMap, error) {
+func Load(fs afero.Fs, filename string) (Clusters, error) {
 	bytes, err := afero.ReadFile(fs, filename)
 	if err != nil {
 		return nil, err
 	}
 
-	p := &ProjectManifestMap{}
+	var clusters Clusters
 
-	if err := json.Unmarshal(bytes, &p); err != nil {
+	if err := yaml.Unmarshal(bytes, &clusters); err != nil {
 		return nil, err
 	}
 
-	return p, nil
+	return clusters, nil
 }

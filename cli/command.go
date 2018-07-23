@@ -4,11 +4,11 @@ import (
 	"fmt"
 
 	"github.com/GoogleContainerTools/skaffold/pkg/skaffold/schema/v1alpha2"
+	"github.com/LGUG2Z/skaffold-beam/config"
 	"github.com/LGUG2Z/skaffold-beam/skaffold"
 	"github.com/LGUG2Z/story/manifest"
 	"github.com/spf13/afero"
 	"github.com/urfave/cli"
-	"github.com/LGUG2Z/skaffold-beam/config"
 )
 
 func LocalCmd(fs afero.Fs) cli.Command {
@@ -64,18 +64,18 @@ func RemoteCmd(fs afero.Fs) cli.Command {
 				return fmt.Errorf("a Google Cloud Platform project id is required")
 			}
 
-			//var projectManifestMap *config.ProjectManifestMap
-			if c.GlobalString("config") != "" {
-				if _, err := config.Load(fs, c.GlobalString("config")); err != nil {
-					return err
-				} else {
-					//projectManifestMap = pmm
-				}
-			}
-
 			story, err := manifest.LoadStory(fs)
 			if err != nil {
 				return err
+			}
+
+			// TODO: Clean up this mess
+			if c.GlobalString("config") != "" {
+				if pmm, err := config.Load(fs, c.GlobalString("config")); err != nil {
+					return err
+				} else {
+					return remoteWithProjectManifestMap(c, fs, pmm, story)
+				}
 			}
 
 			opts := &skaffold.RemoteManifestOpts{
@@ -94,4 +94,22 @@ func RemoteCmd(fs afero.Fs) cli.Command {
 			return skaffold.WriteConfigs(fs, configMap)
 		}),
 	}
+}
+
+func remoteWithProjectManifestMap(c *cli.Context, fs afero.Fs, clusters config.Clusters, story *manifest.Story) error {
+	configMap := make(map[string]*v1alpha2.SkaffoldConfig)
+	for name, _ := range clusters {
+		clusterYAML := fmt.Sprintf("skaffold-%s.yaml", name)
+		configMap[clusterYAML] = skaffold.NewConfig()
+	}
+
+	opts := &skaffold.RemoteManifestWithProjectManifestMapOpts{
+		Story:          story,
+		ClusterConfigs: configMap,
+		GCPProject:     c.GlobalString("gcp-project"),
+		Clusters:       clusters,
+	}
+
+	skaffold.RemoteManifestsWithProjectManifestMap(opts)
+	return skaffold.WriteConfigs(fs, configMap)
 }

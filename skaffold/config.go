@@ -8,10 +8,10 @@ import (
 	"text/template"
 
 	"github.com/GoogleContainerTools/skaffold/pkg/skaffold/schema/v1alpha2"
+	"github.com/LGUG2Z/skaffold-beam/config"
 	"github.com/LGUG2Z/story/manifest"
 	"github.com/spf13/afero"
 	"gopkg.in/yaml.v2"
-	"github.com/LGUG2Z/skaffold-beam/config"
 )
 
 func NewConfig() *v1alpha2.SkaffoldConfig {
@@ -141,35 +141,49 @@ func RemoteManifests(fs afero.Fs, opts *RemoteManifestOpts) error {
 }
 
 type RemoteManifestWithProjectManifestMapOpts struct {
-	GCPProject         string
-	Story              *manifest.Story
-	ProjectManifestMap *config.ProjectManifestMap
-	ClusterConfigs     []*v1alpha2.SkaffoldConfig
+	ClusterConfigs map[string]*v1alpha2.SkaffoldConfig
+	Clusters       config.Clusters
+	GCPProject     string
+	Story          *manifest.Story
 }
 
+// TODO: Clean up this mess
 func RemoteManifestsWithProjectManifestMap(opts *RemoteManifestWithProjectManifestMapOpts) {
-	for n, cluster := range opts.ProjectManifestMap.Clusters {
-		opts.ClusterConfigs[n].Build = v1alpha2.BuildConfig{BuildType: v1alpha2.BuildType{
+	for cluster, projects := range opts.Clusters {
+		clusterYAML := fmt.Sprintf("skaffold-%s.yaml", cluster)
+
+		opts.ClusterConfigs[clusterYAML].Build = v1alpha2.BuildConfig{BuildType: v1alpha2.BuildType{
 			GoogleCloudBuild: &v1alpha2.GoogleCloudBuild{ProjectID: opts.GCPProject}},
 		}
 
+		currentClusterProjects := make(map[string]bool)
+		for name, _ := range projects {
+			currentClusterProjects[name] = true
+		}
+
 		for project := range opts.Story.Artifacts {
-			if opts.Story.Artifacts[project] {
-				opts.ClusterConfigs[n].Build.Artifacts = append(opts.ClusterConfigs[n].Build.Artifacts, &v1alpha2.Artifact{
+			if opts.Story.Artifacts[project] && currentClusterProjects[project] {
+				opts.ClusterConfigs[clusterYAML].Build.Artifacts = append(opts.ClusterConfigs[clusterYAML].Build.Artifacts, &v1alpha2.Artifact{
 					ImageName:    fmt.Sprintf("gcr.io/%s/%s", opts.GCPProject, project),
 					Workspace:    project,
 					ArtifactType: v1alpha2.ArtifactType{DockerArtifact: &v1alpha2.DockerArtifact{DockerfilePath: "Dockerfile"}},
 				})
+			}
+		}
 
-				for _, target := range cluster.Projects[project].Manifests.Targets {
-					opts.ClusterConfigs[n].Deploy.KubectlDeploy.RemoteManifests =
+		for name, p := range projects {
+			if opts.Story.Artifacts[name] {
+				for _, target := range p.Manifests.Targets {
+					opts.ClusterConfigs[clusterYAML].Deploy.KubectlDeploy.RemoteManifests =
 						append(
-							opts.ClusterConfigs[n].Deploy.KubectlDeploy.RemoteManifests,
-							fmt.Sprintf("%s:%s/%s", cluster.Projects[project].Namespace, cluster.Projects[project].Manifests.Type, target),
+							opts.ClusterConfigs[clusterYAML].Deploy.KubectlDeploy.RemoteManifests,
+							fmt.Sprintf("%s:%s/%s", p.Namespace, p.Manifests.Type, target),
 						)
 				}
 			}
 		}
+
+		sort.Strings(opts.ClusterConfigs[clusterYAML].Deploy.KubectlDeploy.Manifests)
 	}
 }
 
